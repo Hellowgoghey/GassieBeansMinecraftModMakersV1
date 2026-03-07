@@ -36,16 +36,11 @@ body {
   cursor: crosshair;
 }
 
-/* ── ANIMATED GRID BACKGROUND ── */
-#bg-grid {
+/* ── CANVAS GRID BACKGROUND ── */
+#bg-canvas {
   position: fixed; inset: 0; z-index: 0;
-  background-image:
-    linear-gradient(rgba(40,224,192,.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(40,224,192,.04) 1px, transparent 1px);
-  background-size: 40px 40px;
-  animation: gridScroll 20s linear infinite;
+  pointer-events: none;
 }
-@keyframes gridScroll { to { background-position: 40px 40px; } }
 
 /* ── SCANLINES ── */
 #scanlines {
@@ -416,7 +411,7 @@ footer span { color: var(--teal); }
 </head>
 <body>
 
-<div id="bg-grid"></div>
+<canvas id="bg-canvas"></canvas>
 <div id="scanlines"></div>
 <div class="corner tl"></div>
 <div class="corner tr"></div>
@@ -580,35 +575,191 @@ footer span { color: var(--teal); }
 
 <footer>
   <div>⚒ MC MODDING TOOLKIT · BEDROCK EDITION</div>
-  <div style="margin-top:6px;font-size:9px">BUILT FOR <span>CREATORS</span> · ALL TOOLS FREE · Copyright © 2026 GassieBean
-Do not copy or reuse this code without permission.
-All rights reserved.</div>
+  <div style="margin-top:6px;font-size:9px">BUILT FOR <span>CREATORS</span> · ALL TOOLS FREE · Copyright © 2026 GassieBean<br>Do not copy or reuse this code without permission. All rights reserved.</div>
 </footer>
 
 <script>
-// Spawn some floating particles cool
+/* ══════════════════════════════════════
+   INTERACTIVE WARP GRID
+══════════════════════════════════════ */
+(function(){
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  const SPACING = 44;       // grid cell size px
+  const RADIUS  = 180;      // mouse influence radius
+  const STRENGTH = 52;      // max warp displacement
+  const LINE_BASE = 0.055;  // base line opacity
+
+  let W, H, cols, rows;
+  let mouseX = -9999, mouseY = -9999;
+  let targetMX = -9999, targetMY = -9999;
+  let breathe = 0; // 0–1 breathing cycle phase
+
+  function resize(){
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    cols = Math.ceil(W / SPACING) + 2;
+    rows = Math.ceil(H / SPACING) + 2;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  document.addEventListener('mousemove', e => {
+    targetMX = e.clientX;
+    targetMY = e.clientY;
+  });
+  document.addEventListener('mouseleave', () => {
+    targetMX = -9999; targetMY = -9999;
+  });
+
+  // Ease mouse toward target for smooth lag
+  function easeMouse(){
+    const spd = 0.1;
+    if(targetMX < -999){ mouseX = -9999; mouseY = -9999; return; }
+    mouseX += (targetMX - mouseX) * spd;
+    mouseY += (targetMY - mouseY) * spd;
+  }
+
+  // Warp a grid point away from mouse
+  function warpPoint(gx, gy){
+    const dx = gx - mouseX;
+    const dy = gy - mouseY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if(dist >= RADIUS || dist === 0) return {x: gx, y: gy, pull: 0};
+    const t = 1 - dist / RADIUS;         // 0 at edge, 1 at center
+    const smooth = t * t * (3 - 2*t);    // smoothstep
+    const push = smooth * STRENGTH;
+    const nx = dx / dist, ny = dy / dist;
+    return {
+      x: gx + nx * push,
+      y: gy + ny * push,
+      pull: smooth
+    };
+  }
+
+  let lastT = 0;
+  function draw(ts){
+    const dt = (ts - lastT) / 1000;
+    lastT = ts;
+
+    // Breathing — slow sine oscillation
+    breathe += dt * 0.18;
+    const breath = 0.5 + 0.5 * Math.sin(breathe); // 0–1
+
+    easeMouse();
+    ctx.clearRect(0, 0, W, H);
+
+    const offX = (W % SPACING) / 2;
+    const offY = (H % SPACING) / 2;
+
+    // Draw horizontal lines
+    for(let r = 0; r <= rows; r++){
+      const gy = offY + r * SPACING;
+      ctx.beginPath();
+      let first = true;
+      for(let c = -1; c <= cols; c++){
+        const gx = offX + c * SPACING;
+        const {x, y, pull} = warpPoint(gx, gy);
+        // opacity: base + breathe boost, dimmed near mouse
+        const opacity = (LINE_BASE + breath * 0.028) * (1 - pull * 0.7);
+        if(first){
+          ctx.strokeStyle = `rgba(40,224,192,${opacity.toFixed(3)})`;
+          ctx.lineWidth = 0.7;
+          ctx.moveTo(x, y);
+          first = false;
+        } else {
+          // Re-set style per segment so warped area fades nicely
+          ctx.stroke(); ctx.beginPath();
+          ctx.strokeStyle = `rgba(40,224,192,${opacity.toFixed(3)})`;
+          ctx.lineWidth = 0.7;
+          ctx.moveTo(x, y);
+        }
+        if(c < cols){
+          const {x:nx, y:ny} = warpPoint(offX + (c+1)*SPACING, gy);
+          ctx.lineTo(nx, ny);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // Draw vertical lines
+    for(let c = 0; c <= cols; c++){
+      const gx = offX + c * SPACING;
+      ctx.beginPath();
+      let first = true;
+      for(let r = -1; r <= rows; r++){
+        const gy = offY + r * SPACING;
+        const {x, y, pull} = warpPoint(gx, gy);
+        const opacity = (LINE_BASE + breath * 0.028) * (1 - pull * 0.7);
+        if(first){
+          ctx.strokeStyle = `rgba(40,224,192,${opacity.toFixed(3)})`;
+          ctx.lineWidth = 0.7;
+          ctx.moveTo(x, y);
+          first = false;
+        } else {
+          ctx.stroke(); ctx.beginPath();
+          ctx.strokeStyle = `rgba(40,224,192,${opacity.toFixed(3)})`;
+          ctx.lineWidth = 0.7;
+          ctx.moveTo(x, y);
+        }
+        if(r < rows){
+          const {x:nx, y:ny} = warpPoint(gx, offY + (r+1)*SPACING);
+          ctx.lineTo(nx, ny);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // Glow dots at intersections near mouse
+    if(mouseX > -999){
+      for(let r = 0; r <= rows; r++){
+        for(let c = 0; c <= cols; c++){
+          const gx = offX + c * SPACING;
+          const gy = offY + r * SPACING;
+          const {x, y, pull} = warpPoint(gx, gy);
+          if(pull > 0.05){
+            ctx.beginPath();
+            ctx.arc(x, y, pull * 2.2, 0, Math.PI*2);
+            ctx.fillStyle = `rgba(40,224,192,${(pull * 0.5).toFixed(3)})`;
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+})();
+
+/* ══════════════════════════════════════
+   FLOATING PARTICLES
+══════════════════════════════════════ */
 (function(){
   const colors = ['#28e0c0','#f0c030','#a060ff','#ff8030','#4080ff'];
   for(let i=0;i<22;i++){
     const p = document.createElement('div');
-    p.className = 'particle'; //float particles
+    p.className = 'particle';
     const c = colors[Math.floor(Math.random()*colors.length)];
     p.style.cssText = `
       left:${Math.random()*100}vw;
-     bottom:${Math.random()*-23}px;
+      bottom:${Math.random()*-20}px;
       background:${c};
-    --dx:${(Math.random()-.5)*60}px; animation-duration:${8+Math.random()*14}s;
+      --dx:${(Math.random()-.5)*60}px;
+      animation-duration:${8+Math.random()*14}s;
       animation-delay:${Math.random()*12}s;
-   width:${Math.random()<.3?3:2}px;
+      width:${Math.random()<.3?3:2}px;
       height:${Math.random()<.3?3:2}px;
     `;
-    document.body.appendChild(p);//spawn paricle
+    document.body.appendChild(p);
   }
 })();
 
-// click to open link
+/* ══════════════════════════════════════
+   CARD CLICKS
+══════════════════════════════════════ */
 document.querySelectorAll('.tool-card:not(.soon)').forEach(card=>{
- card.addEventListener('click', e=>{
+  card.addEventListener('click', e=>{
     if(e.target.tagName==='BUTTON'||e.target.closest('button')) return;
     window.open(card.href,'_blank');
   });
