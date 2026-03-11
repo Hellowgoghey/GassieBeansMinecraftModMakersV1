@@ -178,7 +178,29 @@ h1 span { color: var(--teal); }
   from { opacity:0; transform:translateY(24px); }
   to   { opacity:1; transform:translateY(0); }
 }
+.tool-card.c-green:hover {
+  border-color: var(--green);
+  box-shadow: 0 12px 40px rgba(64,208,96,.15);
+}
 
+.tool-card.c-green::before {
+  background: var(--green);
+}
+
+.c-green .tag {
+  border-color: rgba(64,208,96,.25);
+  color: rgba(64,208,96,.6);
+}
+
+.c-green .open-btn {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.c-green .open-btn:hover {
+  background: var(--green);
+  color: var(--bg);
+}
 .tool-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 40px rgba(0,0,0,.5);
